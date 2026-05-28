@@ -97,16 +97,16 @@
       }
     }
 
+    // spawn new pipe when the last one has moved left enough
+const last = pipes[pipes.length - 1];
+if (!last || last.x < W - PIPE_SPACING) {
+  const newX = last ? last.x + PIPE_SPACING : W + 200;
+  pipes.push(makePipe(newX));
+}
+
     // remove off-screen pipes
     while (pipes.length && pipes[0].x + pipes[0].w < -50) {
       pipes.shift();
-    }
-
-    // ensure we always have two pipes ahead
-    while (pipes.length < 2) {
-      const last = pipes[pipes.length - 1];
-      const newX = last ? last.x + PIPE_SPACING : W + 200;
-      pipes.push(makePipe(newX));
     }
 
     // collisions with floor/ceiling
