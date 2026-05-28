@@ -34,10 +34,9 @@
 
   const ENERGY_MAX = 1.0;
   const ENERGY_DRAIN = 0.08;
-  const ENERGY_BOOST = 0.35;
   const CAN_RADIUS = 26;
 
-  // game state: 'intro' (cutscene), 'play', 'dead'
+  // game state: 'intro', 'play', 'dead'
   let state = 'intro';
 
   // ASSETS
@@ -48,7 +47,7 @@
   pigFlyImg.src = 'assets/flying-pig.png';
 
   const canImg = new Image();
-  canImg.src = 'redbull-can.png'; // in repo root per your tree [page:19]
+  canImg.src = 'redbull-can.png';
 
   const slopImages = [];
   const slopNames = ['slop1', 'slop2', 'slop3', 'slop4', 'slop5', 'slop6'];
@@ -59,7 +58,7 @@
   }
 
   const bgImg = new Image();
-  bgImg.src = 'bg-layer.png'; // root file [page:19]
+  bgImg.src = 'bg-layer.png';
 
   let bgOffset = 0;
   const BG_SPEED = PIPE_SPEED * 0.35;
@@ -119,13 +118,17 @@
   }
 
   function makePipe(xPos) {
-    const maxGapY = H - PIPE_MARGIN - GAP;
-    const gapY = PIPE_MARGIN + Math.random() * (maxGapY - PIPE_MARGIN);
+    const safeMargin = 140;
+    const gapSize = GAP;
+    const minGapY = safeMargin;
+    const maxGapY = H - safeMargin - gapSize;
+    const gapY = minGapY + Math.random() * Math.max(1, maxGapY - minGapY);
+
     return {
       x: xPos,
       w: PIPE_WIDTH,
       gapY,
-      gapH: GAP,
+      gapH: gapSize,
       scored: false,
       topImg: randomSlopImage(),
       bottomImg: randomSlopImage()
@@ -161,19 +164,16 @@
     introTimer += dt;
     bgOffset -= BG_SPEED * dt;
 
-    // move can left toward pig
     if (introCan) {
       introCan.x -= PIPE_SPEED * 0.7 * dt;
       if (introCan.x <= pig.x + 10) {
         introCan = null;
-        energy = ENERGY_MAX;
+        energy = ENERGY_MAX; // full refill on intro can
       }
     } else {
-      // little breathing animation after drink
       introPigScale = 1 + 0.08 * Math.sin(introTimer * 10);
     }
 
-    // after ~2.2 seconds, start real game
     if (introTimer > 2.2) {
       hardResetToPlay();
     }
@@ -212,6 +212,7 @@
       const newPipe = makePipe(baseX + jitter);
       pipes.push(newPipe);
       pipeCount++;
+
       if (pipeCount % 3 === 0 && pipes.length >= 2) {
         const prevPipe = pipes[pipes.length - 2];
         cans.push(makeCanBetween(prevPipe, newPipe));
@@ -230,6 +231,7 @@
       }
     }
 
+    // can pickups: FULL REFILL
     for (let i = cans.length - 1; i >= 0; i--) {
       const c = cans[i];
       const dx = pig.x - c.x;
@@ -238,7 +240,7 @@
       const rad = pig.r + c.r;
       if (distSq < rad*rad) {
         cans.splice(i, 1);
-        energy = Math.min(ENERGY_MAX, energy + ENERGY_BOOST);
+        energy = ENERGY_MAX; // full refill here
       }
     }
   }
@@ -426,7 +428,7 @@
   function loop(t) {
     const dt = Math.min(0.05, (t - lastTime) / 1000);
     lastTime = t;
-    if (running) update(dt);
+    update(dt);
     draw();
     requestAnimationFrame(loop);
   }
