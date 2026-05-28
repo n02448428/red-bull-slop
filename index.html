@@ -22,6 +22,15 @@
   window.addEventListener('resize', resize);
   resize();
 
+  // CONFIG
+  const GAP = 260;          // vertical hole size (bigger = easier)
+  const PIPE_WIDTH = 90;
+  const PIPE_SPACING = 320; // horizontal distance between pipes
+  const PIPE_MARGIN = 80;   // vertical margin from top/bottom
+  const PIPE_SPEED = 220;   // px/sec
+  const GRAVITY = 20;
+  const FLAP_STRENGTH = -9;
+
   let pig, pipes, running, lastTime, score;
 
   function reset() {
@@ -29,25 +38,27 @@
       x: W * 0.3,
       y: H * 0.5,
       vy: 0,
-      r: 20
+      r: 22
     };
-    pipes = [ makePipe() ];
+    pipes = [];
+    // spawn two pipes to start
+    const firstX = W + 200;
+    pipes.push(makePipe(firstX));
+    pipes.push(makePipe(firstX + PIPE_SPACING));
     running = true;
     lastTime = performance.now();
     score = 0;
   }
 
-  function makePipe() {
-    const gap = 200;      // vertical hole size
-    const margin = 80;    // keep gap away from screen edges
-    const maxGapY = H - margin - gap;
-    const gapY = margin + Math.random() * (maxGapY - margin);
+  function makePipe(xPos) {
+    const maxGapY = H - PIPE_MARGIN - GAP;
+    const gapY = PIPE_MARGIN + Math.random() * (maxGapY - PIPE_MARGIN);
 
     return {
-      x: W + 100,
-      w: 80,
+      x: xPos,
+      w: PIPE_WIDTH,
       gapY,
-      gapH: gap,
+      gapH: GAP,
       scored: false
     };
   }
@@ -57,7 +68,7 @@
       reset();
       return;
     }
-    pig.vy = -9;
+    pig.vy = FLAP_STRENGTH;
   }
 
   window.addEventListener('keydown', e => {
@@ -69,16 +80,16 @@
   window.addEventListener('pointerdown', flap);
 
   function update(dt) {
-    const g = 20;
-    pig.vy += g * dt;
+    // pig physics
+    pig.vy += GRAVITY * dt;
     pig.y += pig.vy;
 
-    const speed = 200;
+    // move pipes
     for (const p of pipes) {
-      p.x -= speed * dt;
+      p.x -= PIPE_SPEED * dt;
     }
 
-    // scoring: pig passed pipe
+    // scoring: when pig passes pipe completely
     for (const p of pipes) {
       if (!p.scored && p.x + p.w < pig.x) {
         p.scored = true;
@@ -86,14 +97,16 @@
       }
     }
 
-    // destroy off‑screen slop
-    if (pipes.length && pipes[0].x + pipes[0].w < 0) {
+    // remove off-screen pipes
+    while (pipes.length && pipes[0].x + pipes[0].w < -50) {
       pipes.shift();
     }
 
-    // keep regenerating so it goes forever
-    if (pipes.length < 2) {
-      pipes.push(makePipe());
+    // ensure we always have two pipes ahead
+    while (pipes.length < 2) {
+      const last = pipes[pipes.length - 1];
+      const newX = last ? last.x + PIPE_SPACING : W + 200;
+      pipes.push(makePipe(newX));
     }
 
     // collisions with floor/ceiling
@@ -101,7 +114,7 @@
       running = false;
     }
 
-    // collisions with slop columns
+    // collisions with pipes
     for (const p of pipes) {
       const withinX = pig.x + pig.r > p.x && pig.x - pig.r < p.x + p.w;
       const inGap  = pig.y - pig.r > p.gapY && pig.y + pig.r < p.gapY + p.gapH;
