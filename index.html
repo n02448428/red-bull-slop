@@ -22,7 +22,7 @@
   window.addEventListener('resize', resize);
   resize();
 
-  let pig, pipes, running, lastTime;
+  let pig, pipes, running, lastTime, score;
 
   function reset() {
     pig = {
@@ -34,6 +34,7 @@
     pipes = [ makePipe() ];
     running = true;
     lastTime = performance.now();
+    score = 0;
   }
 
   function makePipe() {
@@ -46,7 +47,8 @@
       x: W + 100,
       w: 80,
       gapY,
-      gapH: gap
+      gapH: gap,
+      scored: false
     };
   }
 
@@ -74,6 +76,14 @@
     const speed = 200;
     for (const p of pipes) {
       p.x -= speed * dt;
+    }
+
+    // scoring: pig passed pipe
+    for (const p of pipes) {
+      if (!p.scored && p.x + p.w < pig.x) {
+        p.scored = true;
+        score++;
+      }
     }
 
     // destroy off‑screen slop
@@ -135,6 +145,13 @@
     ctx.fill();
   }
 
+  function drawHUD() {
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 32px monospace';
+    ctx.fillText(String(score ?? 0), W / 2, 60);
+  }
+
   function drawGameOver() {
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, W, H);
@@ -152,6 +169,7 @@
     drawBackground();
     drawPipes();
     drawPig();
+    drawHUD();
     if (!running) drawGameOver();
   }
 
