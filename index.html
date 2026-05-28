@@ -37,18 +37,18 @@
   const ENERGY_BOOST = 0.35;
   const CAN_RADIUS = 26;
 
-  // STATES: 'intro' (cutscene), 'play', 'dead'
+  // game state: 'intro' (cutscene), 'play', 'dead'
   let state = 'intro';
 
   // ASSETS
   const pigBaseImg = new Image();
-  pigBaseImg.src = 'assets/pig.png';           // grounded pig
+  pigBaseImg.src = 'assets/pig.png';
 
   const pigFlyImg = new Image();
-  pigFlyImg.src = 'assets/flying-pig.png';     // wings pig
+  pigFlyImg.src = 'assets/flying-pig.png';
 
   const canImg = new Image();
-  canImg.src = 'assets/redbull-can.png';
+  canImg.src = 'redbull-can.png'; // in repo root per your tree [page:19]
 
   const slopImages = [];
   const slopNames = ['slop1', 'slop2', 'slop3', 'slop4', 'slop5', 'slop6'];
@@ -59,7 +59,8 @@
   }
 
   const bgImg = new Image();
-  bgImg.src = 'assets/bg-layer.png';
+  bgImg.src = 'bg-layer.png'; // root file [page:19]
+
   let bgOffset = 0;
   const BG_SPEED = PIPE_SPEED * 0.35;
 
@@ -71,12 +72,39 @@
 
   let pig, pipes, cans, running, lastTime, score, energy, pipeCount;
 
-  // intro animation data
+  // intro animation
   let introTimer = 0;
-  let introCan = null;   // {x,y,r}
+  let introCan = null;
   let introPigScale = 1;
 
-  function hardReset() {
+  function startIntro() {
+    state = 'intro';
+    pig = {
+      x: W * 0.25,
+      y: H * 0.65,
+      vy: 0,
+      r: 30
+    };
+    pipes = [];
+    cans = [];
+    score = 0;
+    energy = 0;
+    pipeCount = 0;
+    bgOffset = 0;
+    introTimer = 0;
+    introPigScale = 1;
+    introCan = {
+      x: W + 150,
+      y: pig.y - 10,
+      r: CAN_RADIUS
+    };
+    running = true;
+    lastTime = performance.now();
+  }
+
+  function hardResetToPlay() {
+    pig.vy = 0;
+    pig.y = H * 0.5;
     pipes = [];
     cans = [];
     const firstX = W + 200;
@@ -87,28 +115,7 @@
     energy = ENERGY_MAX;
     pipeCount = 1;
     bgOffset = 0;
-  }
-
-  function startIntro() {
-    state = 'intro';
-    pig = {
-      x: W * 0.25,
-      y: H * 0.65,
-      vy: 0,
-      r: 30
-    };
-    introTimer = 0;
-    introPigScale = 1;
-    const startX = W + 150;
-    introCan = { x: startX, y: pig.y - 10, r: CAN_RADIUS };
-    pipes = [];
-    cans = [];
-    score = 0;
-    energy = 0; // fills after drink
-    pipeCount = 0;
-    bgOffset = 0;
-    running = true;
-    lastTime = performance.now();
+    state = 'play';
   }
 
   function makePipe(xPos) {
@@ -154,25 +161,21 @@
     introTimer += dt;
     bgOffset -= BG_SPEED * dt;
 
-    // move intro can toward pig
+    // move can left toward pig
     if (introCan) {
-      introCan.x -= PIPE_SPEED * 0.6 * dt;
-      // when close to pig, "drink"
-      if (introCan.x < pig.x + 20) {
+      introCan.x -= PIPE_SPEED * 0.7 * dt;
+      if (introCan.x <= pig.x + 10) {
         introCan = null;
         energy = ENERGY_MAX;
       }
-    }
-
-    // little bounce on pig after drink
-    if (!introCan && energy > 0) {
+    } else {
+      // little breathing animation after drink
       introPigScale = 1 + 0.08 * Math.sin(introTimer * 10);
     }
 
-    // after 2.2s, transition into play
+    // after ~2.2 seconds, start real game
     if (introTimer > 2.2) {
-      hardReset();
-      state = 'play';
+      hardResetToPlay();
     }
   }
 
@@ -209,7 +212,6 @@
       const newPipe = makePipe(baseX + jitter);
       pipes.push(newPipe);
       pipeCount++;
-
       if (pipeCount % 3 === 0 && pipes.length >= 2) {
         const prevPipe = pipes[pipes.length - 2];
         cans.push(makeCanBetween(prevPipe, newPipe));
@@ -242,8 +244,6 @@
   }
 
   function update(dt) {
-    if (!running && state === 'play') return;
-
     if (state === 'intro') {
       updateIntro(dt);
     } else if (state === 'play') {
@@ -306,9 +306,25 @@
     }
   }
 
+  function drawIntroCan() {
+    if (!introCan) return;
+    const c = introCan;
+    if (canImg.complete && canImg.naturalWidth > 0) {
+      const size = c.r * 2.2;
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.drawImage(canImg, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = '#4af';
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
   function drawCans() {
-    const list = state === 'intro' && introCan ? [introCan] : cans;
-    for (const c of list) {
+    for (const c of cans) {
       if (canImg.complete && canImg.naturalWidth > 0) {
         const size = c.r * 2.2;
         ctx.save();
@@ -329,8 +345,8 @@
     const py = pig.y;
     const renderR = state === 'intro' ? pig.r * introPigScale : pig.r;
     const size = renderR * 2.8;
-
     const img = (state === 'intro') ? pigBaseImg : pigFlyImg;
+
     if (img.complete && img.naturalWidth > 0) {
       ctx.save();
       ctx.translate(px, py);
@@ -389,14 +405,14 @@
   function draw() {
     drawBackground();
 
-    if (state === 'play') {
+    if (state === 'intro') {
+      drawPig();
+      drawIntroCan();
+      drawHUD();
+    } else if (state === 'play') {
       drawPipes();
       drawCans();
       drawPig();
-      drawHUD();
-    } else if (state === 'intro') {
-      drawPig();
-      drawCans();
       drawHUD();
     } else if (state === 'dead') {
       drawPipes();
