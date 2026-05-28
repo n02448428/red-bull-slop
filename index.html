@@ -23,28 +23,45 @@
   resize();
 
   // CONFIG
-  const GAP = 260;          // vertical hole size (bigger = easier)
-  const PIPE_WIDTH = 90;
-  const PIPE_SPACING = 320; // horizontal distance between pipes
-  const PIPE_MARGIN = 80;   // vertical margin from top/bottom
-  const PIPE_SPEED = 220;   // px/sec
+  const GAP = 260;            // vertical gap size
+  const PIPE_WIDTH = 140;     // drawn width of slop
+  const PIPE_SPACING = 320;   // base horizontal distance between pipes
+  const SPACING_JITTER = 120; // extra random spacing (0..this)
+  const PIPE_MARGIN = 80;
+  const PIPE_SPEED = 220;
   const GRAVITY = 20;
   const FLAP_STRENGTH = -9;
+
+  // ASSETS
+  const pigImg = new Image();
+  pigImg.src = 'assets/flying-pig.png';
+
+  const slopImages = [];
+  const slopNames = ['slop1', 'slop2', 'slop3', 'slop4', 'slop5', 'slop6']; // will just skip missing
+  for (const name of slopNames) {
+    const img = new Image();
+    img.src = `assets/${name}.png`;
+    slopImages.push(img);
+  }
+
+  function randomSlopImage() {
+    const available = slopImages.filter(img => img.complete && img.naturalWidth > 0);
+    if (available.length === 0) return null;
+    return available[Math.floor(Math.random() * available.length)];
+  }
 
   let pig, pipes, running, lastTime, score;
 
   function reset() {
     pig = {
-      x: W * 0.3,
+      x: W * 0.28,
       y: H * 0.5,
       vy: 0,
-      r: 22
+      r: 26
     };
     pipes = [];
-    // spawn two pipes to start
     const firstX = W + 200;
     pipes.push(makePipe(firstX));
-    pipes.push(makePipe(firstX + PIPE_SPACING));
     running = true;
     lastTime = performance.now();
     score = 0;
@@ -59,7 +76,9 @@
       w: PIPE_WIDTH,
       gapY,
       gapH: GAP,
-      scored: false
+      scored: false,
+      topImg: randomSlopImage(),
+      bottomImg: randomSlopImage()
     };
   }
 
@@ -80,16 +99,14 @@
   window.addEventListener('pointerdown', flap);
 
   function update(dt) {
-    // pig physics
     pig.vy += GRAVITY * dt;
     pig.y += pig.vy;
 
-    // move pipes
     for (const p of pipes) {
       p.x -= PIPE_SPEED * dt;
     }
 
-    // scoring: when pig passes pipe completely
+    // scoring
     for (const p of pipes) {
       if (!p.scored && p.x + p.w < pig.x) {
         p.scored = true;
@@ -97,24 +114,25 @@
       }
     }
 
-    // spawn new pipe when the last one has moved left enough
-const last = pipes[pipes.length - 1];
-if (!last || last.x < W - PIPE_SPACING) {
-  const newX = last ? last.x + PIPE_SPACING : W + 200;
-  pipes.push(makePipe(newX));
-}
-
-    // remove off-screen pipes
-    while (pipes.length && pipes[0].x + pipes[0].w < -50) {
+    // remove off-screen
+    while (pipes.length && pipes[0].x + pipes[0].w < -200) {
       pipes.shift();
     }
 
-    // collisions with floor/ceiling
+    // spawn new pipes based on last one's position (no hard limit)
+    const last = pipes[pipes.length - 1];
+    if (!last || last.x < W - PIPE_SPACING) {
+      const baseX = last ? last.x + PIPE_SPACING : W + 200;
+      const jitter = Math.random() * SPACING_JITTER;
+      pipes.push(makePipe(baseX + jitter));
+    }
+
+    // floor / ceiling
     if (pig.y - pig.r < 0 || pig.y + pig.r > H) {
       running = false;
     }
 
-    // collisions with pipes
+    // collisions
     for (const p of pipes) {
       const withinX = pig.x + pig.r > p.x && pig.x - pig.r < p.x + p.w;
       const inGap  = pig.y - pig.r > p.gapY && pig.y + pig.r < p.gapY + p.gapH;
@@ -128,7 +146,6 @@ if (!last || last.x < W - PIPE_SPACING) {
     ctx.fillStyle = '#050509';
     ctx.fillRect(0, 0, W, H);
 
-    // simple slop bubbles
     for (let i = 0; i < 40; i++) {
       ctx.fillStyle = `hsla(${200 + Math.random()*80},70%,${20+Math.random()*20}%,0.25)`;
       const r = Math.random()*50;
@@ -140,22 +157,72 @@ if (!last || last.x < W - PIPE_SPACING) {
 
   function drawPipes() {
     for (const p of pipes) {
-      ctx.fillStyle = '#157a2b';
+      const bottomY = p.gapY + p.gapH;
 
       // top slop
-      ctx.fillRect(p.x, 0, p.w, p.gapY);
+      if (p.topImg && p.topImg.complete && p.topImg.naturalWidth > 0) {
+        const scale = p.w / p.topImg.naturalWidth;
+        const h = p.gapY;
+        const imgH = p.topImg.naturalHeight * scale;
+        const reps = Math.ceil(h / imgH);
+        for (let i = 0; i < reps; i++) {
+          ctx.drawImage(
+            p.topImg,
+            p.x,
+            h - (i + 1) * imgH,
+            p.w,
+            imgH
+          );
+        }
+      } else {
+        ctx.fillStyle = '#157a2b';
+        ctx.fillRect(p.x, 0, p.w, p.gapY);
+      }
 
       // bottom slop
-      const bottomY = p.gapY + p.gapH;
-      ctx.fillRect(p.x, bottomY, p.w, H - bottomY);
+      const bottomHeight = H - bottomY;
+      if (p.bottomImg && p.bottomImg.complete && p.bottomImg.naturalWidth > 0) {
+        const scaleB = p.w / p.bottomImg.naturalWidth;
+        const imgHB = p.bottomImg.naturalHeight * scaleB;
+        const repsB = Math.ceil(bottomHeight / imgHB);
+        for (let i = 0; i < repsB; i++) {
+          ctx.drawImage(
+            p.bottomImg,
+            p.x,
+            bottomY + i * imgHB,
+            p.w,
+            imgHB
+          );
+        }
+      } else {
+        ctx.fillStyle = '#157a2b';
+        ctx.fillRect(p.x, bottomY, p.w, bottomHeight);
+      }
     }
   }
 
   function drawPig() {
-    ctx.fillStyle = '#f8a';
-    ctx.beginPath();
-    ctx.arc(pig.x, pig.y, pig.r, 0, Math.PI*2);
-    ctx.fill();
+    const px = pig.x;
+    const py = pig.y;
+    const size = pig.r * 2.4;
+
+    if (pigImg.complete && pigImg.naturalWidth > 0) {
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.drawImage(
+        pigImg,
+        -size * 0.5,
+        -size * 0.5,
+        size,
+        size
+      );
+      ctx.restore();
+    } else {
+      ctx.fillStyle = '#f8a';
+      ctx.beginPath();
+      ctx.arc(px, py, pig.r, 0, Math.PI*2);
+      ctx.fill();
+    }
   }
 
   function drawHUD() {
