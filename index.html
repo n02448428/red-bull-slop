@@ -57,7 +57,7 @@
       x: W * 0.28,
       y: H * 0.5,
       vy: 0,
-      r: 26
+      r: 40
     };
     pipes = [];
     const firstX = W + 200;
@@ -204,7 +204,7 @@
   function drawPig() {
     const px = pig.x;
     const py = pig.y;
-    const size = pig.r * 2.4;
+    const size = pig.r * 3;
 
     if (pigImg.complete && pigImg.naturalWidth > 0) {
       ctx.save();
