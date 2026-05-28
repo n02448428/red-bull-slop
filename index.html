@@ -31,18 +31,17 @@
       vy: 0,
       r: 20
     };
-    pipes = [
-      makePipe()
-    ];
+    pipes = [ makePipe() ];
     running = true;
     lastTime = performance.now();
   }
 
   function makePipe() {
-    const gap = 180;
-    const minGapY = 80;
-    const maxGapY = H - 80 - gap;
-    const gapY = minGapY + Math.random() * (maxGapY - minGapY);
+    const gap = 200;      // vertical hole size
+    const margin = 80;    // keep gap away from screen edges
+    const maxGapY = H - margin - gap;
+    const gapY = margin + Math.random() * (maxGapY - margin);
+
     return {
       x: W + 100,
       w: 80,
@@ -68,7 +67,7 @@
   window.addEventListener('pointerdown', flap);
 
   function update(dt) {
-    const g = 20; // gravity
+    const g = 20;
     pig.vy += g * dt;
     pig.y += pig.vy;
 
@@ -76,31 +75,37 @@
     for (const p of pipes) {
       p.x -= speed * dt;
     }
-    if (pipes[0].x + pipes[0].w < 0) {
+
+    // destroy off‑screen slop
+    if (pipes.length && pipes[0].x + pipes[0].w < 0) {
       pipes.shift();
     }
+
+    // keep regenerating so it goes forever
     if (pipes.length < 2) {
       pipes.push(makePipe());
     }
 
-    // collisions
+    // collisions with floor/ceiling
     if (pig.y - pig.r < 0 || pig.y + pig.r > H) {
       running = false;
     }
+
+    // collisions with slop columns
     for (const p of pipes) {
-      if (pig.x + pig.r > p.x && pig.x - pig.r < p.x + p.w) {
-        if (pig.y - pig.r < p.gapY || pig.y + pig.r > p.gapY + p.gapH) {
-          running = false;
-        }
+      const withinX = pig.x + pig.r > p.x && pig.x - pig.r < p.x + p.w;
+      const inGap  = pig.y - pig.r > p.gapY && pig.y + pig.r < p.gapY + p.gapH;
+      if (withinX && !inGap) {
+        running = false;
       }
     }
   }
 
-  function draw() {
+  function drawBackground() {
     ctx.fillStyle = '#050509';
     ctx.fillRect(0, 0, W, H);
 
-    // slop background
+    // simple slop bubbles
     for (let i = 0; i < 40; i++) {
       ctx.fillStyle = `hsla(${200 + Math.random()*80},70%,${20+Math.random()*20}%,0.25)`;
       const r = Math.random()*50;
@@ -108,30 +113,46 @@
       ctx.arc(Math.random()*W, Math.random()*H, r, 0, Math.PI*2);
       ctx.fill();
     }
+  }
 
-    // pipes (slop columns)
+  function drawPipes() {
     for (const p of pipes) {
-      ctx.fillStyle = '#3f8';
-      ctx.fillRect(p.x, 0, p.w, p.gapY);
-      ctx.fillRect(p.x, p.gapY + p.gapH, p.w, H - p.gapY - p.gapH);
-    }
+      ctx.fillStyle = '#157a2b';
 
-    // pig (placeholder circle)
+      // top slop
+      ctx.fillRect(p.x, 0, p.w, p.gapY);
+
+      // bottom slop
+      const bottomY = p.gapY + p.gapH;
+      ctx.fillRect(p.x, bottomY, p.w, H - bottomY);
+    }
+  }
+
+  function drawPig() {
     ctx.fillStyle = '#f8a';
     ctx.beginPath();
     ctx.arc(pig.x, pig.y, pig.r, 0, Math.PI*2);
     ctx.fill();
+  }
 
-    if (!running) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 40px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('SLOP OVER', W/2, H/2 - 20);
-      ctx.font = '20px monospace';
-      ctx.fillText('tap or space to try again', W/2, H/2 + 20);
-    }
+  function drawGameOver() {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+
+    ctx.font = 'bold 40px sans-serif';
+    ctx.fillText('SLOP OVER', W/2, H/2 - 20);
+
+    ctx.font = '20px monospace';
+    ctx.fillText('tap or space to try again', W/2, H/2 + 20);
+  }
+
+  function draw() {
+    drawBackground();
+    drawPipes();
+    drawPig();
+    if (!running) drawGameOver();
   }
 
   function loop(t) {
