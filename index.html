@@ -22,12 +22,12 @@
   window.addEventListener('resize', resize);
   resize();
 
-  // CONFIG
-  const GAP = 260;
+  // CONFIG (tuned)
+  const GAP = 320;            // bigger vertical gap
   const PIPE_WIDTH = 140;
-  const PIPE_SPACING = 600;
+  const PIPE_SPACING = 460;   // more horizontal space
   const SPACING_JITTER = 80;
-  const PIPE_MARGIN = 80;
+  const PIPE_MARGIN = 100;    // keep gap away from edges
   const PIPE_SPEED = 220;
   const GRAVITY = 20;
   const FLAP_STRENGTH = -9;
@@ -52,11 +52,10 @@
     slopImages.push(img);
   }
 
-  // Parallax background
   const bgImg = new Image();
-  bgImg.src = 'assets/bg-layer.png'; // wide background
+  bgImg.src = 'assets/bg-layer.png';
   let bgOffset = 0;
-  const BG_SPEED = PIPE_SPEED * 0.35; // slower than pipes
+  const BG_SPEED = PIPE_SPEED * 0.35;
 
   function randomSlopImage() {
     const available = slopImages.filter(img => img.complete && img.naturalWidth > 0);
@@ -71,7 +70,7 @@
       x: W * 0.28,
       y: H * 0.5,
       vy: 0,
-      r: 40
+      r: 30          // smaller hitbox
     };
     pipes = [];
     cans = [];
@@ -125,25 +124,20 @@
   window.addEventListener('pointerdown', flap);
 
   function update(dt) {
-    // energy
     energy -= ENERGY_DRAIN * dt;
     if (energy <= 0) {
       energy = 0;
       running = false;
     }
 
-    // pig physics
     pig.vy += GRAVITY * dt;
     pig.y += pig.vy;
 
-    // background scroll
     bgOffset -= BG_SPEED * dt;
 
-    // pipes & cans
     for (const p of pipes) p.x -= PIPE_SPEED * dt;
-    for (const c of cans) c.x -= PIPE_SPEED * dt;
+    for (const c of cans)  c.x -= PIPE_SPEED * dt;
 
-    // scoring
     for (const p of pipes) {
       if (!p.scored && p.x + p.w < pig.x) {
         p.scored = true;
@@ -151,11 +145,9 @@
       }
     }
 
-    // remove off-screen
     while (pipes.length && pipes[0].x + pipes[0].w < -200) pipes.shift();
     while (cans.length && cans[0].x + CAN_RADIUS < -200) cans.shift();
 
-    // spawn pipes by spacing
     const last = pipes[pipes.length - 1];
     if (!last || last.x < W - PIPE_SPACING) {
       const baseX = last ? last.x + PIPE_SPACING : W + 200;
@@ -164,19 +156,16 @@
       pipes.push(newPipe);
       pipeCount++;
 
-      // every 3rd pipe, spawn a can between this and previous
       if (pipeCount % 3 === 0 && pipes.length >= 2) {
         const prevPipe = pipes[pipes.length - 2];
         cans.push(makeCanBetween(prevPipe, newPipe));
       }
     }
 
-    // boundaries
     if (pig.y - pig.r < 0 || pig.y + pig.r > H) {
       running = false;
     }
 
-    // collisions with pipes
     for (const p of pipes) {
       const withinX = pig.x + pig.r > p.x && pig.x - pig.r < p.x + p.w;
       const inGap  = pig.y - pig.r > p.gapY && pig.y + pig.r < p.gapY + p.gapH;
@@ -185,7 +174,6 @@
       }
     }
 
-    // collisions with cans
     for (let i = cans.length - 1; i >= 0; i--) {
       const c = cans[i];
       const dx = pig.x - c.x;
@@ -210,7 +198,6 @@
       const drawW = imgW * scale;
       let x = bgOffset % drawW;
       if (x > 0) x -= drawW;
-
       for (; x < W; x += drawW) {
         ctx.drawImage(bgImg, x, 0, drawW, H);
       }
@@ -221,7 +208,7 @@
     for (const p of pipes) {
       const bottomY = p.gapY + p.gapH;
 
-      // top slop (flipped)
+      // top slop flipped
       if (p.topImg && p.topImg.complete && p.topImg.naturalWidth > 0) {
         const scale = p.w / p.topImg.naturalWidth;
         const imgH = p.topImg.naturalHeight * scale;
@@ -277,7 +264,7 @@
   function drawPig() {
     const px = pig.x;
     const py = pig.y;
-    const size = pig.r * 3.2;
+    const size = pig.r * 2.8; // scaled with smaller r
 
     if (pigImg.complete && pigImg.naturalWidth > 0) {
       ctx.save();
