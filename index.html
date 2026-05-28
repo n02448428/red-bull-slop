@@ -9,17 +9,6 @@
   </style>
 </head>
 <body>
-<canvas id="c"></canvas><!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Red Bull Slop</title>
-  <style>
-    html, body { margin:0; padding:0; background:#000; overflow:hidden; }
-    canvas { display:block; margin:0 auto; background:#101018; }
-  </style>
-</head>
-<body>
 <canvas id="c"></canvas>
 <script>
   const canvas = document.getElementById('c');
@@ -34,20 +23,19 @@
   resize();
 
   // CONFIG
-  const GAP = 260;            // vertical gap size
-  const PIPE_WIDTH = 140;     // drawn width of slop
-  const PIPE_SPACING = 320;   // base horizontal distance between pipes
-  const SPACING_JITTER = 120; // extra random spacing (0..this)
+  const GAP = 260;              // vertical gap size
+  const PIPE_WIDTH = 140;       // slop width
+  const PIPE_SPACING = 420;     // base distance between pipes (bigger = more space)
+  const SPACING_JITTER = 80;    // random extra spacing
   const PIPE_MARGIN = 80;
   const PIPE_SPEED = 220;
   const GRAVITY = 20;
   const FLAP_STRENGTH = -9;
 
-  const ENERGY_MAX = 1.0;     // full energy
-  const ENERGY_DRAIN = 0.08;  // per second
-  const ENERGY_BOOST = 0.35;  // from one can
+  const ENERGY_MAX = 1.0;
+  const ENERGY_DRAIN = 0.08;
+  const ENERGY_BOOST = 0.35;
   const CAN_RADIUS = 26;
-  const CAN_INTERVAL = 2.5;   // seconds between spawn attempts
 
   // ASSETS
   const pigImg = new Image();
@@ -70,7 +58,7 @@
     return available[Math.floor(Math.random() * available.length)];
   }
 
-  let pig, pipes, cans, running, lastTime, score, energy, canTimer;
+  let pig, pipes, cans, running, lastTime, score, energy, pipeCount;
 
   function reset() {
     pig = {
@@ -87,7 +75,7 @@
     lastTime = performance.now();
     score = 0;
     energy = ENERGY_MAX;
-    canTimer = 0;
+    pipeCount = 1;
   }
 
   function makePipe(xPos) {
@@ -105,18 +93,12 @@
     };
   }
 
-  function makeCan(xPos) {
-    // spawn can roughly in the middle of the current gap of the last pipe
-    const lastPipe = pipes[pipes.length - 1];
-    const y = lastPipe
-      ? lastPipe.gapY + lastPipe.gapH * 0.5 + (Math.random() * 60 - 30)
-      : H * 0.5;
-
-    return {
-      x: xPos,
-      y,
-      r: CAN_RADIUS
-    };
+  function makeCanBetween(pipeA, pipeB) {
+    const x = (pipeA.x + pipeA.w + pipeB.x) / 2;
+    const gapMidA = pipeA.gapY + pipeA.gapH * 0.5;
+    const gapMidB = pipeB.gapY + pipeB.gapH * 0.5;
+    const y = (gapMidA + gapMidB) / 2;
+    return { x, y, r: CAN_RADIUS };
   }
 
   function flap() {
@@ -136,28 +118,22 @@
   window.addEventListener('pointerdown', flap);
 
   function update(dt) {
-    // energy drain
     energy -= ENERGY_DRAIN * dt;
     if (energy <= 0) {
       energy = 0;
       running = false;
     }
 
-    // pig physics
     pig.vy += GRAVITY * dt;
     pig.y += pig.vy;
 
-    // pipes movement
     for (const p of pipes) {
       p.x -= PIPE_SPEED * dt;
     }
-
-    // cans movement
     for (const c of cans) {
       c.x -= PIPE_SPEED * dt;
     }
 
-    // scoring
     for (const p of pipes) {
       if (!p.scored && p.x + p.w < pig.x) {
         p.scored = true;
@@ -165,39 +141,33 @@
       }
     }
 
-    // remove off-screen pipes
     while (pipes.length && pipes[0].x + pipes[0].w < -200) {
       pipes.shift();
     }
-
-    // remove off-screen cans
     while (cans.length && cans[0].x + CAN_RADIUS < -200) {
       cans.shift();
     }
 
-    // spawn new pipes based on last one's position
+    // spacing-based pipe spawn
     const last = pipes[pipes.length - 1];
     if (!last || last.x < W - PIPE_SPACING) {
       const baseX = last ? last.x + PIPE_SPACING : W + 200;
       const jitter = Math.random() * SPACING_JITTER;
-      pipes.push(makePipe(baseX + jitter));
+      const newPipe = makePipe(baseX + jitter);
+      pipes.push(newPipe);
+      pipeCount++;
+
+      // spawn a can every 3rd pipe, between this and the previous pipe
+      if (pipeCount % 3 === 0 && pipes.length >= 2) {
+        const prevPipe = pipes[pipes.length - 2];
+        cans.push(makeCanBetween(prevPipe, newPipe));
+      }
     }
 
-    // spawn cans over time
-    canTimer += dt;
-    if (canTimer >= CAN_INTERVAL) {
-      canTimer = 0;
-      const refPipe = pipes[pipes.length - 1];
-      const spawnX = refPipe ? refPipe.x + refPipe.w * 0.5 : W + 300;
-      cans.push(makeCan(spawnX));
-    }
-
-    // floor / ceiling
     if (pig.y - pig.r < 0 || pig.y + pig.r > H) {
       running = false;
     }
 
-    // collisions with pipes
     for (const p of pipes) {
       const withinX = pig.x + pig.r > p.x && pig.x - pig.r < p.x + p.w;
       const inGap  = pig.y - pig.r > p.gapY && pig.y + pig.r < p.gapY + p.gapH;
@@ -206,7 +176,6 @@
       }
     }
 
-    // collisions with cans (circle-circle)
     for (let i = cans.length - 1; i >= 0; i--) {
       const c = cans[i];
       const dx = pig.x - c.x;
@@ -214,7 +183,6 @@
       const distSq = dx*dx + dy*dy;
       const rad = pig.r + c.r;
       if (distSq < rad*rad) {
-        // collected
         cans.splice(i, 1);
         energy = Math.min(ENERGY_MAX, energy + ENERGY_BOOST);
       }
@@ -238,7 +206,7 @@
     for (const p of pipes) {
       const bottomY = p.gapY + p.gapH;
 
-      // TOP SLOP (flip vertically so art stays upright)
+      // top slop (flipped upright)
       if (p.topImg && p.topImg.complete && p.topImg.naturalWidth > 0) {
         const scale = p.w / p.topImg.naturalWidth;
         const imgH = p.topImg.naturalHeight * scale;
@@ -246,18 +214,11 @@
         const reps = Math.ceil(h / imgH);
 
         ctx.save();
-        ctx.translate(p.x + p.w / 2, 0); // center at top
-        ctx.scale(1, -1); // flip vertically
-
+        ctx.translate(p.x + p.w / 2, 0);
+        ctx.scale(1, -1);
         for (let i = 0; i < reps; i++) {
-          const y = -(i + 1) * imgH; // going upward in flipped space
-          ctx.drawImage(
-            p.topImg,
-            -p.w / 2,
-            y,
-            p.w,
-            imgH
-          );
+          const y = -(i + 1) * imgH;
+          ctx.drawImage(p.topImg, -p.w / 2, y, p.w, imgH);
         }
         ctx.restore();
       } else {
@@ -265,21 +226,14 @@
         ctx.fillRect(p.x, 0, p.w, p.gapY);
       }
 
-      // BOTTOM SLOP (normal orientation)
+      // bottom slop
       const bottomHeight = H - bottomY;
       if (p.bottomImg && p.bottomImg.complete && p.bottomImg.naturalWidth > 0) {
         const scaleB = p.w / p.bottomImg.naturalWidth;
         const imgHB = p.bottomImg.naturalHeight * scaleB;
         const repsB = Math.ceil(bottomHeight / imgHB);
-
         for (let i = 0; i < repsB; i++) {
-          ctx.drawImage(
-            p.bottomImg,
-            p.x,
-            bottomY + i * imgHB,
-            p.w,
-            imgHB
-          );
+          ctx.drawImage(p.bottomImg, p.x, bottomY + i * imgHB, p.w, imgHB);
         }
       } else {
         ctx.fillStyle = '#157a2b';
@@ -294,13 +248,7 @@
         const size = c.r * 2.2;
         ctx.save();
         ctx.translate(c.x, c.y);
-        ctx.drawImage(
-          canImg,
-          -size / 2,
-          -size / 2,
-          size,
-          size
-        );
+        ctx.drawImage(canImg, -size / 2, -size / 2, size, size);
         ctx.restore();
       } else {
         ctx.fillStyle = '#4af';
@@ -319,13 +267,7 @@
     if (pigImg.complete && pigImg.naturalWidth > 0) {
       ctx.save();
       ctx.translate(px, py);
-      ctx.drawImage(
-        pigImg,
-        -size * 0.5,
-        -size * 0.5,
-        size,
-        size
-      );
+      ctx.drawImage(pigImg, -size * 0.5, -size * 0.5, size, size);
       ctx.restore();
     } else {
       ctx.fillStyle = '#f8a';
@@ -336,13 +278,11 @@
   }
 
   function drawHUD() {
-    // score
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.font = 'bold 32px monospace';
     ctx.fillText(String(score ?? 0), W / 2, 60);
 
-    // energy bar (top-left)
     const barW = 220;
     const barH = 18;
     const x = 30;
@@ -353,7 +293,7 @@
     ctx.strokeRect(x, y, barW, barH);
 
     const fillW = barW * Math.max(0, Math.min(1, energy));
-    const hue = 40 + 80 * energy; // red -> yellow-ish
+    const hue = 40 + 80 * energy;
     ctx.fillStyle = `hsl(${hue}, 80%, 55%)`;
     ctx.fillRect(x, y, fillW, barH);
   }
@@ -375,261 +315,6 @@
     drawBackground();
     drawPipes();
     drawCans();
-    drawPig();
-    drawHUD();
-    if (!running) drawGameOver();
-  }
-
-  function loop(t) {
-    const dt = Math.min(0.05, (t - lastTime) / 1000);
-    lastTime = t;
-    if (running) update(dt);
-    draw();
-    requestAnimationFrame(loop);
-  }
-
-  reset();
-  requestAnimationFrame(loop);
-</script>
-</body>
-</html>
-  const canvas = document.getElementById('c');
-  const ctx = canvas.getContext('2d');
-  let W, H;
-
-  function resize() {
-    W = canvas.width = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-  }
-  window.addEventListener('resize', resize);
-  resize();
-
-  // CONFIG
-  const GAP = 260;            // vertical gap size
-  const PIPE_WIDTH = 140;     // drawn width of slop
-  const PIPE_SPACING = 320;   // base horizontal distance between pipes
-  const SPACING_JITTER = 120; // extra random spacing (0..this)
-  const PIPE_MARGIN = 80;
-  const PIPE_SPEED = 220;
-  const GRAVITY = 20;
-  const FLAP_STRENGTH = -9;
-
-  // ASSETS
-  const pigImg = new Image();
-  pigImg.src = 'assets/flying-pig.png';
-
-  const slopImages = [];
-  const slopNames = ['slop1', 'slop2', 'slop3', 'slop4', 'slop5', 'slop6']; // will just skip missing
-  for (const name of slopNames) {
-    const img = new Image();
-    img.src = `assets/${name}.png`;
-    slopImages.push(img);
-  }
-
-  function randomSlopImage() {
-    const available = slopImages.filter(img => img.complete && img.naturalWidth > 0);
-    if (available.length === 0) return null;
-    return available[Math.floor(Math.random() * available.length)];
-  }
-
-  let pig, pipes, running, lastTime, score;
-
-  function reset() {
-    pig = {
-      x: W * 0.28,
-      y: H * 0.5,
-      vy: 0,
-      r: 40
-    };
-    pipes = [];
-    const firstX = W + 200;
-    pipes.push(makePipe(firstX));
-    running = true;
-    lastTime = performance.now();
-    score = 0;
-  }
-
-  function makePipe(xPos) {
-    const maxGapY = H - PIPE_MARGIN - GAP;
-    const gapY = PIPE_MARGIN + Math.random() * (maxGapY - PIPE_MARGIN);
-
-    return {
-      x: xPos,
-      w: PIPE_WIDTH,
-      gapY,
-      gapH: GAP,
-      scored: false,
-      topImg: randomSlopImage(),
-      bottomImg: randomSlopImage()
-    };
-  }
-
-  function flap() {
-    if (!running) {
-      reset();
-      return;
-    }
-    pig.vy = FLAP_STRENGTH;
-  }
-
-  window.addEventListener('keydown', e => {
-    if (e.code === 'Space') {
-      e.preventDefault();
-      flap();
-    }
-  });
-  window.addEventListener('pointerdown', flap);
-
-  function update(dt) {
-    pig.vy += GRAVITY * dt;
-    pig.y += pig.vy;
-
-    for (const p of pipes) {
-      p.x -= PIPE_SPEED * dt;
-    }
-
-    // scoring
-    for (const p of pipes) {
-      if (!p.scored && p.x + p.w < pig.x) {
-        p.scored = true;
-        score++;
-      }
-    }
-
-    // remove off-screen
-    while (pipes.length && pipes[0].x + pipes[0].w < -200) {
-      pipes.shift();
-    }
-
-    // spawn new pipes based on last one's position (no hard limit)
-    const last = pipes[pipes.length - 1];
-    if (!last || last.x < W - PIPE_SPACING) {
-      const baseX = last ? last.x + PIPE_SPACING : W + 200;
-      const jitter = Math.random() * SPACING_JITTER;
-      pipes.push(makePipe(baseX + jitter));
-    }
-
-    // floor / ceiling
-    if (pig.y - pig.r < 0 || pig.y + pig.r > H) {
-      running = false;
-    }
-
-    // collisions
-    for (const p of pipes) {
-      const withinX = pig.x + pig.r > p.x && pig.x - pig.r < p.x + p.w;
-      const inGap  = pig.y - pig.r > p.gapY && pig.y + pig.r < p.gapY + p.gapH;
-      if (withinX && !inGap) {
-        running = false;
-      }
-    }
-  }
-
-  function drawBackground() {
-    ctx.fillStyle = '#050509';
-    ctx.fillRect(0, 0, W, H);
-
-    for (let i = 0; i < 40; i++) {
-      ctx.fillStyle = `hsla(${200 + Math.random()*80},70%,${20+Math.random()*20}%,0.25)`;
-      const r = Math.random()*50;
-      ctx.beginPath();
-      ctx.arc(Math.random()*W, Math.random()*H, r, 0, Math.PI*2);
-      ctx.fill();
-    }
-  }
-
-  function drawPipes() {
-    for (const p of pipes) {
-      const bottomY = p.gapY + p.gapH;
-
-      // top slop
-      if (p.topImg && p.topImg.complete && p.topImg.naturalWidth > 0) {
-        const scale = p.w / p.topImg.naturalWidth;
-        const h = p.gapY;
-        const imgH = p.topImg.naturalHeight * scale;
-        const reps = Math.ceil(h / imgH);
-        for (let i = 0; i < reps; i++) {
-          ctx.drawImage(
-            p.topImg,
-            p.x,
-            h - (i + 1) * imgH,
-            p.w,
-            imgH
-          );
-        }
-      } else {
-        ctx.fillStyle = '#157a2b';
-        ctx.fillRect(p.x, 0, p.w, p.gapY);
-      }
-
-      // bottom slop
-      const bottomHeight = H - bottomY;
-      if (p.bottomImg && p.bottomImg.complete && p.bottomImg.naturalWidth > 0) {
-        const scaleB = p.w / p.bottomImg.naturalWidth;
-        const imgHB = p.bottomImg.naturalHeight * scaleB;
-        const repsB = Math.ceil(bottomHeight / imgHB);
-        for (let i = 0; i < repsB; i++) {
-          ctx.drawImage(
-            p.bottomImg,
-            p.x,
-            bottomY + i * imgHB,
-            p.w,
-            imgHB
-          );
-        }
-      } else {
-        ctx.fillStyle = '#157a2b';
-        ctx.fillRect(p.x, bottomY, p.w, bottomHeight);
-      }
-    }
-  }
-
-  function drawPig() {
-    const px = pig.x;
-    const py = pig.y;
-    const size = pig.r * 3;
-
-    if (pigImg.complete && pigImg.naturalWidth > 0) {
-      ctx.save();
-      ctx.translate(px, py);
-      ctx.drawImage(
-        pigImg,
-        -size * 0.5,
-        -size * 0.5,
-        size,
-        size
-      );
-      ctx.restore();
-    } else {
-      ctx.fillStyle = '#f8a';
-      ctx.beginPath();
-      ctx.arc(px, py, pig.r, 0, Math.PI*2);
-      ctx.fill();
-    }
-  }
-
-  function drawHUD() {
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 32px monospace';
-    ctx.fillText(String(score ?? 0), W / 2, 60);
-  }
-
-  function drawGameOver() {
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-
-    ctx.font = 'bold 40px sans-serif';
-    ctx.fillText('SLOP OVER', W/2, H/2 - 20);
-
-    ctx.font = '20px monospace';
-    ctx.fillText('tap or space to try again', W/2, H/2 + 20);
-  }
-
-  function draw() {
-    drawBackground();
-    drawPipes();
     drawPig();
     drawHUD();
     if (!running) drawGameOver();
