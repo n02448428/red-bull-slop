@@ -22,12 +22,12 @@
   window.addEventListener('resize', resize);
   resize();
 
-  // CONFIG (tuned)
-  const GAP = 320;            // bigger vertical gap
+  // CONFIG
+  const GAP = 320;
   const PIPE_WIDTH = 140;
-  const PIPE_SPACING = 460;   // more horizontal space
+  const PIPE_SPACING = 460;
   const SPACING_JITTER = 80;
-  const PIPE_MARGIN = 100;    // keep gap away from edges
+  const PIPE_MARGIN = 100;
   const PIPE_SPEED = 220;
   const GRAVITY = 20;
   const FLAP_STRENGTH = -9;
@@ -37,9 +37,15 @@
   const ENERGY_BOOST = 0.35;
   const CAN_RADIUS = 26;
 
+  // STATES: 'intro' (cutscene), 'play', 'dead'
+  let state = 'intro';
+
   // ASSETS
-  const pigImg = new Image();
-  pigImg.src = 'assets/flying-pig.png';
+  const pigBaseImg = new Image();
+  pigBaseImg.src = 'assets/pig.png';           // grounded pig
+
+  const pigFlyImg = new Image();
+  pigFlyImg.src = 'assets/flying-pig.png';     // wings pig
 
   const canImg = new Image();
   canImg.src = 'assets/redbull-can.png';
@@ -65,13 +71,12 @@
 
   let pig, pipes, cans, running, lastTime, score, energy, pipeCount;
 
-  function reset() {
-    pig = {
-      x: W * 0.28,
-      y: H * 0.5,
-      vy: 0,
-      r: 30          // smaller hitbox
-    };
+  // intro animation data
+  let introTimer = 0;
+  let introCan = null;   // {x,y,r}
+  let introPigScale = 1;
+
+  function hardReset() {
     pipes = [];
     cans = [];
     const firstX = W + 200;
@@ -84,10 +89,31 @@
     bgOffset = 0;
   }
 
+  function startIntro() {
+    state = 'intro';
+    pig = {
+      x: W * 0.25,
+      y: H * 0.65,
+      vy: 0,
+      r: 30
+    };
+    introTimer = 0;
+    introPigScale = 1;
+    const startX = W + 150;
+    introCan = { x: startX, y: pig.y - 10, r: CAN_RADIUS };
+    pipes = [];
+    cans = [];
+    score = 0;
+    energy = 0; // fills after drink
+    pipeCount = 0;
+    bgOffset = 0;
+    running = true;
+    lastTime = performance.now();
+  }
+
   function makePipe(xPos) {
     const maxGapY = H - PIPE_MARGIN - GAP;
     const gapY = PIPE_MARGIN + Math.random() * (maxGapY - PIPE_MARGIN);
-
     return {
       x: xPos,
       w: PIPE_WIDTH,
@@ -108,10 +134,11 @@
   }
 
   function flap() {
-    if (!running) {
-      reset();
+    if (state === 'dead') {
+      startIntro();
       return;
     }
+    if (state !== 'play') return;
     pig.vy = FLAP_STRENGTH;
   }
 
@@ -123,11 +150,38 @@
   });
   window.addEventListener('pointerdown', flap);
 
-  function update(dt) {
+  function updateIntro(dt) {
+    introTimer += dt;
+    bgOffset -= BG_SPEED * dt;
+
+    // move intro can toward pig
+    if (introCan) {
+      introCan.x -= PIPE_SPEED * 0.6 * dt;
+      // when close to pig, "drink"
+      if (introCan.x < pig.x + 20) {
+        introCan = null;
+        energy = ENERGY_MAX;
+      }
+    }
+
+    // little bounce on pig after drink
+    if (!introCan && energy > 0) {
+      introPigScale = 1 + 0.08 * Math.sin(introTimer * 10);
+    }
+
+    // after 2.2s, transition into play
+    if (introTimer > 2.2) {
+      hardReset();
+      state = 'play';
+    }
+  }
+
+  function updatePlay(dt) {
     energy -= ENERGY_DRAIN * dt;
     if (energy <= 0) {
       energy = 0;
       running = false;
+      state = 'dead';
     }
 
     pig.vy += GRAVITY * dt;
@@ -163,14 +217,14 @@
     }
 
     if (pig.y - pig.r < 0 || pig.y + pig.r > H) {
-      running = false;
+      state = 'dead';
     }
 
     for (const p of pipes) {
       const withinX = pig.x + pig.r > p.x && pig.x - pig.r < p.x + p.w;
       const inGap  = pig.y - pig.r > p.gapY && pig.y + pig.r < p.gapY + p.gapH;
       if (withinX && !inGap) {
-        running = false;
+        state = 'dead';
       }
     }
 
@@ -184,6 +238,16 @@
         cans.splice(i, 1);
         energy = Math.min(ENERGY_MAX, energy + ENERGY_BOOST);
       }
+    }
+  }
+
+  function update(dt) {
+    if (!running && state === 'play') return;
+
+    if (state === 'intro') {
+      updateIntro(dt);
+    } else if (state === 'play') {
+      updatePlay(dt);
     }
   }
 
@@ -208,7 +272,6 @@
     for (const p of pipes) {
       const bottomY = p.gapY + p.gapH;
 
-      // top slop flipped
       if (p.topImg && p.topImg.complete && p.topImg.naturalWidth > 0) {
         const scale = p.w / p.topImg.naturalWidth;
         const imgH = p.topImg.naturalHeight * scale;
@@ -228,7 +291,6 @@
         ctx.fillRect(p.x, 0, p.w, p.gapY);
       }
 
-      // bottom slop
       const bottomHeight = H - bottomY;
       if (p.bottomImg && p.bottomImg.complete && p.bottomImg.naturalWidth > 0) {
         const scaleB = p.w / p.bottomImg.naturalWidth;
@@ -245,7 +307,8 @@
   }
 
   function drawCans() {
-    for (const c of cans) {
+    const list = state === 'intro' && introCan ? [introCan] : cans;
+    for (const c of list) {
       if (canImg.complete && canImg.naturalWidth > 0) {
         const size = c.r * 2.2;
         ctx.save();
@@ -264,22 +327,32 @@
   function drawPig() {
     const px = pig.x;
     const py = pig.y;
-    const size = pig.r * 2.8; // scaled with smaller r
+    const renderR = state === 'intro' ? pig.r * introPigScale : pig.r;
+    const size = renderR * 2.8;
 
-    if (pigImg.complete && pigImg.naturalWidth > 0) {
+    const img = (state === 'intro') ? pigBaseImg : pigFlyImg;
+    if (img.complete && img.naturalWidth > 0) {
       ctx.save();
       ctx.translate(px, py);
-      ctx.drawImage(pigImg, -size * 0.5, -size * 0.5, size, size);
+      ctx.drawImage(img, -size * 0.5, -size * 0.5, size, size);
       ctx.restore();
     } else {
       ctx.fillStyle = '#f8a';
       ctx.beginPath();
-      ctx.arc(px, py, pig.r, 0, Math.PI*2);
+      ctx.arc(px, py, renderR, 0, Math.PI*2);
       ctx.fill();
     }
   }
 
   function drawHUD() {
+    if (state === 'intro') {
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.font = '20px monospace';
+      ctx.fillText('first sip gives you wings', W/2, 60);
+      return;
+    }
+
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     ctx.font = 'bold 32px monospace';
@@ -310,16 +383,28 @@
     ctx.fillText('SLOP OVER', W/2, H/2 - 20);
 
     ctx.font = '20px monospace';
-    ctx.fillText('tap or space to try again', W/2, H/2 + 20);
+    ctx.fillText('tap or space to drink again', W/2, H/2 + 20);
   }
 
   function draw() {
     drawBackground();
-    drawPipes();
-    drawCans();
-    drawPig();
-    drawHUD();
-    if (!running) drawGameOver();
+
+    if (state === 'play') {
+      drawPipes();
+      drawCans();
+      drawPig();
+      drawHUD();
+    } else if (state === 'intro') {
+      drawPig();
+      drawCans();
+      drawHUD();
+    } else if (state === 'dead') {
+      drawPipes();
+      drawCans();
+      drawPig();
+      drawHUD();
+      drawGameOver();
+    }
   }
 
   function loop(t) {
@@ -330,7 +415,7 @@
     requestAnimationFrame(loop);
   }
 
-  reset();
+  startIntro();
   requestAnimationFrame(loop);
 </script>
 </body>
